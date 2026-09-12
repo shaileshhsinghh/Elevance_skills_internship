@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { login } from '../controllers/auth.controller';
+import { loginUser } from '../controllers/auth.controller';
 
-const router = Router();
+const router = Router({mergeParams: true});
 
-router.post('/login', login);
+router.post('/login', loginUser);
 
 export default router;
