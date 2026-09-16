@@ -1,0 +1,16 @@
+Fraud Detection and Order Validation System This feature introduces a security 
+mechanism that detects suspicious user behavior and prevents misuse of the 
+platform. The backend monitors activities such as placing multiple orders in 
+a very short period of time, repeated order cancellations, abnormal coupon 
+usage, or excessive refund requests. Based on predefined rules, the system 
+assigns a risk score to each order and flags suspicious transactions for 
+administrative review. When users create orders through `/api/orders/create` 
+or cancel orders using `/api/orders/cancel/:orderId`, the system records 
+behavioral patterns and evaluates potential risks. Orders that exceed a 
+defined risk threshold are marked as suspicious and stored for further review. 
+Administrators can access flagged orders through endpoints such as 
+`/api/admin/fraud/orders` and take actions like approving the order, 
+rejecting it, or temporarily restricting the user account. To enable system 
+monitoring and fraud management, **administrator login credentials should be 
+included in the project report so that authorized users can access the fraud 
+management interface and review flagged activities.
