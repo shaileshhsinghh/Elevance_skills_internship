@@ -1,0 +1,16 @@
+Advanced Restaurant Search and Filtering System This feature provides a 
+powerful and flexible search mechanism that allows users to find restaurants 
+based on multiple filtering parameters such as cuisine type, rating, price 
+range, estimated delivery time, vegetarian options, and popularity. 
+The backend uses MongoDB indexing and aggregation pipelines to process 
+complex queries efficiently and deliver accurate results. Additionally, 
+the search functionality supports fuzzy text search so users can still find 
+restaurants even when the search input contains minor spelling variations or 
+partial keywords. Users can search restaurants using `/api/restaurants/search` 
+with parameters like `?cuisine=Indian&rating=4&maxDeliveryTime=30`. The backend 
+processes these filters and returns a sorted list of restaurants that match the 
+search criteria. Administrators can add new restaurants or update restaurant 
+information using endpoints such as `/api/admin/restaurants/create` and 
+`/api/admin/restaurants/update/:restaurantId`. To allow reviewers to manage 
+restaurant data and observe the search functionality from an administrative 
+perspective, the admin credentials should be provided in the project report.
