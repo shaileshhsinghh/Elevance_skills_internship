@@ -2,57 +2,147 @@ import { Order } from '../models/Order.model';
 import { env } from '../config/env';
 
 export class FraudDetectionService {
-  /**
-   * Evaluate risk for a new order based on user's historical behavior.
-   * Returns risk score and whether to flag.
-   */
-  static async evaluateOrderRisk(userId: string): Promise<{ riskScore: number; flagged: boolean }> {
-    let riskScore = 0;
 
-    // 1. Multiple orders in short period (e.g., >5 in last 5 minutes)
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  static async evaluateOrderRisk(userId: string, couponCode?: string): Promise<{
+    riskScore: number;
+    flagged: boolean;
+    reasons: string[];
+  }> {
+    let riskScore = 0;
+    const reasons: string[] = [];
+
+    const now = Date.now();
+
+    // ─── ORDER FREQUENCY RULES ───────────────────────────────────────
+
+    // Rule 1: More than 3 orders within 10 minutes
+    const tenMinutesAgo = new Date(now - 10 * 60 * 1000);
     const recentOrdersCount = await Order.countDocuments({
       userId,
-      createdAt: { $gte: fiveMinutesAgo },
+      createdAt: { $gte: tenMinutesAgo },
     });
-    if (recentOrdersCount >= 5) {
-      riskScore += 20;
+    if (recentOrdersCount >= 3) {
+      riskScore += 25;
+      reasons.push('Rapid ordering: more than 3 orders in 10 minutes');
     }
 
-    // 2. Repeated cancellations (cancellation rate > 50% over last 10 orders)
-    const lastTenOrders = await Order.find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(10);
-    if (lastTenOrders.length >= 5) {
-      const cancelledCount = lastTenOrders.filter(o => o.status === 'cancelled').length;
-      const rate = cancelledCount / lastTenOrders.length;
-      if (rate > 0.5) {
-        riskScore += 30;
+    // Rule 2: More than 10 orders within 24 hours
+    const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+    const dailyOrdersCount = await Order.countDocuments({
+      userId,
+      createdAt: { $gte: oneDayAgo },
+    });
+    if (dailyOrdersCount >= 10) {
+      riskScore += 20;
+      reasons.push('Unusually high daily volume: more than 10 orders in 24 hours');
+    }
+
+    // ─── CANCELLATION BEHAVIOR RULES ─────────────────────────────────
+
+    // Rule 3: 3 or more cancellations in a single day
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const dailyCancellations = await Order.countDocuments({
+      userId,
+      status: 'cancelled',
+      updatedAt: { $gte: startOfDay },
+    });
+    if (dailyCancellations >= 3) {
+      riskScore += 20;
+      reasons.push('High daily cancellations: 3 or more cancelled today');
+    }
+
+    // Rule 4: Cancellation rate above 70%
+    const totalOrders = await Order.countDocuments({ userId });
+    const totalCancelled = await Order.countDocuments({ userId, status: 'cancelled' });
+    if (totalOrders >= 5) {
+      const cancellationRate = totalCancelled / totalOrders;
+      if (cancellationRate > 0.7) {
+        riskScore += 25;
+        reasons.push(`High cancellation rate: ${(cancellationRate * 100).toFixed(0)}%`);
       }
     }
 
-    // 3. Abnormal coupon usage (e.g., same coupon used multiple times by same user)
-    // For simplicity, we'll check if the user has used any coupon more than 3 times.
-    // This requires aggregation; we'll just add a placeholder rule.
-    // In a real scenario, you might track coupon usage history.
-    // We'll add a dummy rule: if couponCode is provided and totalAmount is unusually low.
-    // Instead, we'll check if any order with same coupon exists and add risk.
-    // Let's implement a simpler version: if coupon is used and order amount < 10, add risk.
-    // But we don't have coupon in the request here; we'll pass it as param.
+    // Rule 5: Cancelled within 2 minutes of placing, 2+ times
+    const quickCancels = await Order.countDocuments({
+      userId,
+      status: 'cancelled',
+      cancelledWithinTwoMinutes: true,
+    });
+    if (quickCancels >= 2) {
+      riskScore += 20;
+      reasons.push('Repeated quick cancellations within 2 minutes of placing');
+    }
 
-    // 4. Excessive refund requests (we'll track refund status, but not implemented here)
+    // ─── COUPON ABUSE RULES ───────────────────────────────────────────
 
-    // Threshold from env
-    const threshold = env.RISK_THRESHOLD;
+    // Rule 6: Coupon applied more than 3 times in a day
+    if (couponCode) {
+      const dailyCouponUsage = await Order.countDocuments({
+        userId,
+        couponCode,
+        createdAt: { $gte: startOfDay },
+      });
+      if (dailyCouponUsage >= 3) {
+        riskScore += 20;
+        reasons.push('Coupon abuse: same coupon used more than 3 times today');
+      }
+
+      // Rule 7: Attempted to use invalid/used coupon more than 2 times
+      const invalidCouponAttempts = await Order.countDocuments({
+        userId,
+        couponCode,
+        couponStatus: 'invalid',
+      });
+      if (invalidCouponAttempts >= 2) {
+        riskScore += 15;
+        reasons.push('Repeated use of invalid or already-used coupon');
+      }
+    }
+
+    // ─── REFUND ABUSE RULES ───────────────────────────────────────────
+
+    // Rule 8: More than 2 refund requests in 7-day window
+    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const recentRefunds = await Order.countDocuments({
+      userId,
+      refundRequested: true,
+      updatedAt: { $gte: sevenDaysAgo },
+    });
+    if (recentRefunds > 2) {
+      riskScore += 20;
+      reasons.push('Refund abuse: more than 2 refund requests in 7 days');
+    }
+
+    // Rule 9: Refund approval rate above 80%
+    const totalRefundRequests = await Order.countDocuments({ userId, refundRequested: true });
+    const approvedRefunds = await Order.countDocuments({ userId, refundStatus: 'approved' });
+    if (totalRefundRequests >= 3) {
+      const refundRate = approvedRefunds / totalRefundRequests;
+      if (refundRate > 0.8) {
+        riskScore += 25;
+        reasons.push(`Serial refunder: refund approval rate at ${(refundRate * 100).toFixed(0)}%`);
+      }
+    }
+
+    // ─── FINAL VERDICT ────────────────────────────────────────────────
+
+    const threshold = Number(env.RISK_THRESHOLD) || 50;
     const flagged = riskScore >= threshold;
 
-    return { riskScore, flagged };
+    return { riskScore, flagged, reasons };
   }
 
-  /**
-   * Re-evaluate risk on cancellation (optional, but we can just log)
-   */
-  static async evaluateOnCancel(userId: string): Promise<void> {
-    // Could update user's risk profile, but not required for now
+  // ─── Called on cancel to check quick-cancel pattern ──────────────
+  static async evaluateOnCancel(userId: string, orderId: string): Promise<void> {
+    const order = await Order.findById(orderId);
+    if (!order) return;
+
+    const timeDiff = (Date.now() - new Date(order.createdAt).getTime()) / 1000 / 60; // in minutes
+
+    if (timeDiff <= 2) {
+      order.cancelledWithinTwoMinutes = true;
+      await order.save();
+    }
   }
 }
