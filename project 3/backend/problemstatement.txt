@@ -1,0 +1,11 @@
+Dynamic Surge Pricing for Delivery Fees This feature implements dynamic pricing for delivery charges depending
+ on factors such as time of day, demand levels, and order volume within a specific region. During peak hours 
+ such as lunch or dinner time, the system automatically increases the delivery fee using a predefined surge 
+ multiplier. The backend continuously analyzes order activity and applies pricing rules to ensure efficient 
+ delivery management during high demand periods. When a user initiates an order request, the backend calculates 
+ the delivery fee through `/api/orders/calculate-delivery-fee` based on the current demand and time. Once the 
+ user confirms the order through `/api/orders/create`, the calculated delivery charge is stored along with the 
+ order details. Administrators can configure surge pricing rules, multipliers, and peak hour settings through 
+ endpoints such as `/api/admin/surge-settings`. For demonstration and system configuration purposes, **the admin 
+ login credentials should be included in the project report so that reviewers can access the administrative controls
+  related to pricing configuration.
